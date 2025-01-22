@@ -1,1 +1,8 @@
-[].
+[{<<"jsx">>,
+  {git,"https://github.com/talentdeficit/jsx.git",
+       {ref,"fc2a001073f2300ba38427c23e83d5673c020542"}},
+  0},
+ {<<"meck">>,
+  {git,"https://github.com/eproxus/meck.git",
+       {ref,"5aaa24886db404f995c9a91b421367f6bfe6e566"}},
+  0}].
