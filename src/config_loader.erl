@@ -1,54 +1,46 @@
-%% ------------------------------------------------------
-%% Module: config_loader
-%% Purpose: Loads and provides access to idempotency rules
-%% from the JSON configuration file.
-%% ------------------------------------------------------
+%% filepath: src/config_loader.erl
 -module(config_loader).
--export([load_rules/1, get_rules/0, get_rule/1]).
+-export([load_config/1, get_rule/1]).
 
-%% ------------------------------------------------------
-%% Load rules from JSON and store globally.
-%% ------------------------------------------------------
-%% @param FilePath The path to the `idempotency_rules.json` file.
-%% @return {ok, Rules} if successfully loaded, {error, Reason} otherwise.
-load_rules(FilePath) ->
-    case file:read_file(FilePath) of
-        {ok, Binary} ->  %% Successfully read the file
-            Json = jsx:decode(Binary, [return_maps]), 
-            RulesList = maps:get(<<"rules">>, Json, undefined),
-            case RulesList of
-                undefined ->
-                    {error, no_rules_found};
-                _ ->
-                    RulesMap = lists:foldl(fun parse_rule/2, #{}, RulesList),
-                    application:set_env(idempotency_service, rules, RulesMap),
-                    {ok, RulesMap}
-            end;
-        {error, Reason} ->  %% File read error (file missing, permissions issue, etc.)
+%% Load configuration from a file
+load_config(ServerConfigFile) ->
+    io:format("Loading server config from file: ~s~n", [ServerConfigFile]),
+    case file:consult(ServerConfigFile) of
+        {ok, Config} ->
+            io:format("Server config loaded: ~p~n", [Config]),
+            {ok, ServiceConfig} = lists:keyfind(idempotency_service, 1, Config),
+            RulesPath = proplists:get_value(rules_path, ServiceConfig),
+            io:format("Rules path: ~s~n", [RulesPath]),
+            load_rules(RulesPath);
+        {error, Reason} ->
+            io:format("Error loading server config: ~p~n", [Reason]),
             {error, {file_read_error, Reason}}
     end.
 
-%% ------------------------------------------------------
-%% Convert list of rules into a map {RuleName => RuleData}
-%% ------------------------------------------------------
-parse_rule(#{<<"name">> := Name, <<"ignore_fields">> := Ignore, <<"key_fields">> := Keys}, Acc) ->
-    Acc#{Name => #{ignore_fields => Ignore, key_fields => Keys}}.
-
-%% ------------------------------------------------------
-%% Retrieve all stored rules from memory.
-%% ------------------------------------------------------
-get_rules() ->
-    case application:get_env(idempotency_service, rules) of
-        {ok, Rules} -> Rules;
-        undefined -> #{}  %% No rules loaded yet
+%% Load idempotency rules from a file
+load_rules(RulesFile) ->
+    io:format("Loading rules from file: ~s~n", [RulesFile]),
+    case file:consult(RulesFile) of
+        {ok, RulesConfig} ->
+            io:format("Rules config loaded: ~p~n", [RulesConfig]),
+            {ok, Rules} = lists:keyfind(idempotency_service, 1, RulesConfig),
+            application:set_env(idempotency_service, rules, Rules),
+            io:format("Rules set in environment: ~p~n", [Rules]),
+            {ok, Rules};
+        {error, Reason} ->
+            io:format("Error loading rules: ~p~n", [Reason]),
+            {error, {file_read_error, Reason}}
     end.
 
-%% ------------------------------------------------------
-%% Retrieve a specific rule by name.
-%% ------------------------------------------------------
+%% Retrieve a specific rule by name
 get_rule(Name) ->
-    Rules = get_rules(),
+    io:format("Retrieving rule for name: ~p~n", [Name]),
+    {ok, Rules} = application:get_env(idempotency_service, rules),
     case maps:get(Name, Rules, undefined) of
-        undefined -> maps:get(<<"default">>, Rules, #{ignore_fields => [], key_fields => []});
-        Rule -> Rule
+        undefined ->
+            io:format("Rule not found, returning default rule~n"),
+            maps:get(default, Rules);
+        Rule ->
+            io:format("Rule found: ~p~n", [Rule]),
+            Rule
     end.
